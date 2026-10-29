@@ -45,7 +45,11 @@
   #overlay .msg{font-size:46px;font-weight:800;color:var(--good);}
   #overlay .sub{font-size:28px;}
   #overlay .cn{font-size:24px;color:var(--dim);}
-  .stars{font-size:54px;letter-spacing:6px;}
+  .stars{font-size:50px;letter-spacing:4px;}
+  .bonus{display:none;font-size:30px;font-weight:800;color:#2a1600;background:linear-gradient(90deg,#ffd93b,#ffb020,#ffd93b);
+         padding:8px 26px;border-radius:999px;box-shadow:0 0 30px #ffc83d99;animation:shine 1.2s ease-in-out infinite alternate;}
+  .bonus.show{display:block;}
+  @keyframes shine{from{transform:scale(1)}to{transform:scale(1.07)}}
   .scores{display:flex;gap:30px;font-size:20px;color:var(--dim);}
   .scores b{display:block;font-size:34px;color:#fff;}
   .modal button{flex:none;width:260px;background:var(--accent);box-shadow:0 6px 0 #b24f00;}
@@ -65,7 +69,12 @@
   .ptitle{font-family:"Fredoka","Arial Rounded MT Bold",sans-serif;font-weight:700;color:#e8463a;
           font-size:clamp(30px,min(6.5vw,7vh),92px);letter-spacing:2px;line-height:1;margin-bottom:1.6vh;text-shadow:0 3px 0 #00000055;}
   .line{font-size:clamp(20px,min(4.15vw,4.9vh),66px)!important;line-height:1.3!important;margin:.5vh 0!important;font-weight:600!important;}
-  .w{color:#ffffff!important;text-shadow:0 2px 0 #00000055;}
+  .w{color:#ffffff!important;text-shadow:0 2px 0 #00000055;cursor:pointer;border-radius:.15em;}
+  .w.tap{animation:tap .7s ease-out;}
+  #poem{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  .w.slide{background:#7fd3ff40;box-shadow:0 0 0 .08em #7fd3ff80;}
+  @keyframes tap{0%{background:#7fd3ff00}25%{background:#7fd3ff88}100%{background:#7fd3ff00}}
+  #taptip{position:relative;z-index:1;margin-top:1vh;font-size:clamp(14px,min(1.9vw,2.4vh),22px);color:#7fd3ff;font-family:-apple-system,"PingFang TC",sans-serif;}
   .w.hit,.w.good{color:#5ce07a!important;text-shadow:0 0 18px #5ce07aaa!important;}
   .w.ok{color:#ffd93b!important;}
   .w.bad{color:#ff6b6b!important;}
@@ -89,6 +98,26 @@
   @keyframes pop{from{transform:scale(.2) rotate(-20deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
   @keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-14px) rotate(3deg)}}
   @media (max-aspect-ratio:1/1){ .jack{width:clamp(80px,22vw,200px);bottom:2vh;} }
+
+  /* ===== 萬聖節配色：字的回饋（沒有紅色） ===== */
+  .w.good{color:#ff9a1f!important;text-shadow:0 0 18px #ff8a00cc,0 2px 0 #00000066!important;}   /* 南瓜橘：很標準 */
+  .w.ok{color:#c9a4ff!important;text-shadow:0 0 14px #a970ff99,0 2px 0 #00000066!important;}    /* 巫婆紫：不錯 */
+  .w.bad{color:#9be34a!important;text-shadow:0 0 12px #7ccf2a88,0 2px 0 #00000066!important;}   /* 史萊姆綠：念到了 */
+  #legend{position:absolute;top:2.2vh;left:2vw;z-index:2;text-align:left;font-size:clamp(12px,1.45vw,17px);line-height:1.6;color:var(--dim);}
+  #legend i{font-style:normal;font-weight:800;}
+  /* ===== 更多南瓜 ===== */
+  .mini{position:absolute;pointer-events:none;z-index:0;opacity:.55;animation:float 4s ease-in-out infinite;}
+  .mini svg,.jack svg,.bigjack svg{width:100%;height:auto;display:block;}
+  @keyframes float{0%,100%{transform:translateY(0) rotate(var(--r,0deg))}50%{transform:translateY(-12px) rotate(calc(var(--r,0deg) * -1))}}
+  .mini .face{fill:#ffd23b;opacity:.9;}
+  @media (max-aspect-ratio:1/1){ .mini{max-width:4.2vw;} }
+  .w.good::after{content:"";}
+  .pop{position:absolute;z-index:3;font-size:clamp(20px,3vw,40px);pointer-events:none;animation:popup 1s ease-out forwards;}
+  @keyframes popup{0%{transform:translate(-50%,0) scale(.4);opacity:0}25%{transform:translate(-50%,-20px) scale(1.2);opacity:1}100%{transform:translate(-50%,-70px) scale(.8);opacity:0}}
+  body{background:radial-gradient(ellipse at top,#3a1f63 0%,#160c2e 55%,#0b0618 100%)!important;}
+  .ptitle{color:#ff7a1a!important;text-shadow:0 0 22px #ff6a0088,0 3px 0 #00000066!important;}
+  #start{background:linear-gradient(180deg,#ff8a1f,#e8600a)!important;}
+  #demo{background:#6b3fb5!important;box-shadow:0 6px 0 #3f2275!important;}
 </style>
 </head>
 <body>
@@ -113,7 +142,8 @@
 
 <div id="overlay" class="modal">
   <div class="big">🍬👻🍬</div>
-  <div class="stars" id="stars">⭐⭐⭐</div>
+  <div class="stars" id="stars">⭐⭐⭐⭐⭐</div>
+  <div class="bonus" id="bonus">🏆 發音小達人 Super Reader! 🏆</div>
   <div class="msg" id="ovMsg">Great job!</div>
   <div class="sub" id="ovSub">You did it!</div>
   <div class="scores">
@@ -160,6 +190,8 @@ const LAST_LINE_NEED = 3;    // 最後一句至少念到 3 個字才算念完
 const LOOKAHEAD = 8;         // 對字時最多往後跳幾個字（容許漏念）
 const FINISH_DELAY = 1500;   // 判定念完後多等 1.5 秒
 const SILENCE_SEC = 15;      // 15 秒沒有進度就結算
+const STAR_COMPLETE = 0.85;  // 真實完整度 85% 以上
+const STAR_ACCURACY = 80;    // 而且真實發音 80 分以上 → 額外給「發音小達人」
 const CHEERS = {
   3:[["Excellent!","Your English is amazing!"],["Perfect!","You sound like a real ghost!"],["Wonderful!","Happy Halloween, superstar!"]],
   2:[["Great job!","You did it!"],["Awesome!","You scared all the ghosts away!"],["Super!","Go get your candy!"]],
@@ -173,7 +205,7 @@ function lsSet(k,v){try{localStorage.setItem(k,v);}catch(_){}}
 /* ===== 建立字詞 ===== */
 function norm(s){return s.toLowerCase().replace(/[^a-z']/g,'').replace(/'/g,'');}
 const poemEl=document.getElementById('poem');
-{const t=document.createElement('div');t.className='ptitle';t.textContent='HALLOWEEN';poemEl.appendChild(t);}
+{const t=document.createElement('div');t.className='ptitle';t.textContent='🎃 HALLOWEEN 🎃';poemEl.appendChild(t);}
 const words=[];   // {token, el, score, line}
 LINES.forEach((line,li)=>{
   const div=document.createElement('div');div.className='line';
@@ -201,7 +233,7 @@ function getCfg(){return {key:lsGet('az_key',''),region:lsGet('az_region','easta
 function refreshKeyHint(){
   const has=!!getCfg().key;
   needKey.classList.toggle('show',!has);
-  if(!listening) heard.textContent=has?'按「開始念」然後對著麥克風念出來！':'請先按上方藍色按鈕設定金鑰';
+  if(!listening) heard.textContent=has?'按「開始念」念出來！👆 不會念的字，點一下或用手指滑過去，就會念給你聽':'請先按上方藍色按鈕設定金鑰';
 }
 function openSetup(){
   const c=getCfg(); $('key').value=c.key; $('region').value=c.region;
@@ -264,6 +296,69 @@ function applyWords(azWords){
   }
 }
 
+/* ===== 點讀：點一下字就念出來 ===== */
+let paused=false;
+function speakCb(text,rate,done){
+  let fired=false; const fire=()=>{if(fired)return;fired=true;done&&done();};
+  if(!('speechSynthesis' in window)){setTimeout(fire,300);return;}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=rate;if(voice)u.voice=voice;
+  u.onend=fire;u.onerror=fire; speechSynthesis.speak(u);
+  setTimeout(fire,1500+text.length*150);           // iPad 偶爾不觸發 onend 的保險
+}
+/* 手指點一下：念兩次；手指滑過去：滑到哪個字就念哪個字（像點讀筆） */
+const cleanW=sp=>sp.textContent.replace(/[^A-Za-z']/g,'');
+function sayNow(w,rate){ if(!('speechSynthesis' in window)) return; speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(w);u.lang='en-US';u.rate=rate;if(voice)u.voice=voice;speechSynthesis.speak(u); }
+function whenQuiet(cb){ const t0=Date.now(); (function poll(){
+  if(!('speechSynthesis' in window)||!speechSynthesis.speaking||Date.now()-t0>5000) return setTimeout(cb,120);
+  setTimeout(poll,120); })(); }
+function wordAt(x,y){ const el=document.elementFromPoint(x,y); return el&&el.closest?el.closest('#poem .w'):null; }
+let gest=null;
+function touchWord(g,sp){
+  if(sp===g.last) return;
+  if(g.last){ g.moved=true; g.last.classList.remove('slide'); }
+  g.last=sp; sp.classList.add('slide');
+  sp.classList.remove('tap'); void sp.offsetWidth; sp.classList.add('tap');
+  const w=cleanW(sp); if(!w) return;
+  heard.textContent='🔊 '+w;
+  if(g.ready) sayNow(w,g.moved?0.85:0.65); else g.pending=w;
+}
+poemEl.addEventListener('pointerdown',e=>{
+  const sp=wordAt(e.clientX,e.clientY); if(!sp) return;
+  if(paused&&!gest) return;                         // 上一次還在恢復收音
+  e.preventDefault();
+  const g={r:null,first:sp,last:null,moved:false,ready:true,pending:null}; gest=g;
+  if(listening&&recognizer){                        // 正在收音：先暫停，避免把 iPad 的聲音當成學生念的
+    paused=true; g.r=recognizer; g.ready=false;
+    const ok=()=>{ g.ready=true; if(g.pending){ sayNow(g.pending,g.moved?0.85:0.65); g.pending=null; } };
+    try{ g.r.stopContinuousRecognitionAsync(ok,ok); }catch(_){ ok(); }
+    setTimeout(()=>{ if(!g.ready) ok(); },1500);
+  }
+  touchWord(g,sp);
+});
+poemEl.addEventListener('pointermove',e=>{
+  if(!gest) return; e.preventDefault();
+  const sp=wordAt(e.clientX,e.clientY); if(sp) touchWord(gest,sp);
+});
+function endGesture(){
+  if(!gest) return; const g=gest; gest=null;
+  document.querySelectorAll('#poem .w.slide').forEach(x=>x.classList.remove('slide'));
+  const resume=()=>{
+    if(!g.r){ return; }
+    if(listening && recognizer===g.r){
+      g.r.startContinuousRecognitionAsync(()=>{paused=false;lastProgress=Date.now();heard.textContent='我在聽囉，繼續念！';},()=>{paused=false;});
+    } else paused=false;
+  };
+  const after=()=>whenQuiet(()=>{
+    if(!g.moved){ const w=cleanW(g.first); speakCb(w,0.65,resume); }   // 點一下：再念第二次
+    else resume();
+  });
+  (function waitReady(){ g.ready?after():setTimeout(waitReady,100); })();
+}
+['pointerup','pointercancel'].forEach(t=>poemEl.addEventListener(t,endGesture));
+window.addEventListener('pointerup',endGesture);
+
 /* ===== 開始 / 停止 ===== */
 function startListening(){
   const {key,region}=getCfg();
@@ -308,9 +403,10 @@ function startListening(){
 
   listening=true; passed=false; lastProgress=Date.now();
   mic.classList.add('on'); startBtn.textContent='⏹ 念完了'; startBtn.classList.add('listening');
-  heard.textContent='我在聽囉… Go!（每念完一句稍微停一下）';
+  heard.textContent='我在聽囉… Go!（每句稍停一下・不會的字點一下或滑過去）';
   speak('Ready? Go!');
   timer=setInterval(()=>{
+    if(paused){lastProgress=Date.now();return;}
     if(!listening||passed||finishTimer) return;
     const idle=Date.now()-lastProgress;
     if(cursor>0 && idle>SILENCE_SEC*1000) finish(false);
@@ -318,7 +414,7 @@ function startListening(){
   },500);
 }
 function stopListening(){
-  listening=false; clearInterval(timer);
+  listening=false; paused=false; clearInterval(timer);
   if(recognizer){const r=recognizer;recognizer=null;
     try{r.stopContinuousRecognitionAsync(()=>r.close(),()=>r.close());}catch(_){}}
   mic.classList.remove('on'); startBtn.textContent='🎤 開始念'; startBtn.classList.remove('listening');
@@ -336,20 +432,20 @@ function finish(manual){
   const completeness=read.length/words.length;
   const accuracy=read.length?read.reduce((a,w)=>a+w.score,0)/read.length:0;
   const fluency=fluencyN?fluencySum/fluencyN:0;
-  let tier;
-  if(manual) tier=2;
-  else if(completeness>=0.85 && accuracy>=75) tier=3;
-  else if(completeness>=PASS_COMPLETE) tier=2;
-  else tier=1;
-  const pool=CHEERS[tier]; const [a,b]=pool[Math.floor(Math.random()*pool.length)];
-  $('stars').textContent='⭐'.repeat(tier)+'☆'.repeat(3-tier);
+  // 給小朋友看的分數：一律 90～100 分、五顆星（真實分數只用來判斷要不要多給鼓勵）
+  const show=(v,has)=>has?Math.round(90+Math.max(0,Math.min(100,v))/10):90+Math.floor(Math.random()*4);
+  const star=!manual && completeness>=STAR_COMPLETE && accuracy>=STAR_ACCURACY;
+  const pool=star?CHEERS[3]:CHEERS[2]; const [a,b]=pool[Math.floor(Math.random()*pool.length)];
+  $('stars').textContent='⭐⭐⭐⭐⭐';
+  $('bonus').classList.toggle('show',star);
   $('ovMsg').textContent=a; $('ovSub').textContent=b;
-  $('sAcc').textContent=manual?'-':Math.round(accuracy);
-  $('sComp').textContent=manual?'-':Math.round(completeness*100)+'%';
-  $('sFlu').textContent=manual?'-':Math.round(fluency);
+  $('sAcc').textContent=show(accuracy,!manual&&read.length>0);
+  $('sComp').textContent=show(completeness*100,!manual);
+  $('sFlu').textContent=show(fluency,!manual&&fluencyN>0);
   $('overlay').classList.add('show');
   count++; lsSet('hw_count',count); nEl.textContent=count;
-  confetti(); speak(a+' '+b);
+  confetti(); if(star) setTimeout(confetti,700);
+  speak(a+' '+b+(star?' You are a super reader!':''));
 }
 $('next').onclick=()=>{$('overlay').classList.remove('show');resetWords();passed=false;refreshKeyHint();};
 $('pass').onclick=()=>finish(true);
@@ -408,6 +504,32 @@ if(!getCfg().key) openSetup();
   // 過關時重新觸發彈跳動畫
   const ov=document.getElementById('overlay');
   new MutationObserver(()=>{const b=ov.querySelector('.bigjack');if(b&&ov.classList.contains('show')){b.style.animation='none';void b.offsetWidth;b.style.animation='';}}).observe(ov,{attributes:true,attributeFilter:['class']});
+})();
+
+/* ===== 更多南瓜：背景漂浮小南瓜、圖例、念得好跳出南瓜 ===== */
+(function(){
+  const poem=document.getElementById('poem');
+  const svg=document.querySelector('.jack')?document.querySelector('.jack').innerHTML:'';
+  [[1.5,20,6,-8],[94,20,5,10],[1.5,50,5,6],[94.5,50,4.5,-6],[24,3,4,-12],[72,3,4,12]].forEach(([x,y,w,r],k)=>{
+    const d=document.createElement('div');d.className='mini';d.innerHTML=svg;
+    d.style.left=x+'%';d.style.top=y+'%';d.style.width=w+'vw';d.style.setProperty('--r',r+'deg');d.style.animationDelay=(k*0.6)+'s';
+    poem.appendChild(d);
+  });
+  const lg=document.createElement('div');lg.id='legend';
+  lg.innerHTML='<i style="color:#ff9a1f">🎃 南瓜橘</i> 超標準<br><i style="color:#c9a4ff">🔮 巫婆紫</i> 很不錯<br><i style="color:#9be34a">🧪 史萊姆綠</i> 念到了';
+  poem.appendChild(lg);
+  // 字變成南瓜橘時，跳出一顆小南瓜
+  new MutationObserver(ms=>ms.forEach(m=>{
+    const el=m.target;
+    if(el.classList&&el.classList.contains('good')&&!el.dataset.popped){
+      el.dataset.popped='1';
+      const pr=poem.getBoundingClientRect(), r=el.getBoundingClientRect();
+      const p=document.createElement('div');p.className='pop';p.textContent='🎃';
+      p.style.left=(r.left-pr.left+r.width/2)+'px';p.style.top=(r.top-pr.top-10)+'px';
+      poem.appendChild(p);setTimeout(()=>p.remove(),1100);
+    }
+    if(el.classList&&el.className==='w') delete el.dataset.popped;
+  })).observe(poem,{subtree:true,attributes:true,attributeFilter:['class']});
 })();
 </script>
 </body>
