@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Halloween AI 關主（Azure 發音評分版）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#0d0b2b;--panel:#1a1747;--accent:#ff7a1a;--good:#5ce07a;--ok:#ffd93b;--bad:#ff6b6b;--text:#fff;--dim:#9b97c9;--azure:#3aa0ff;}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -16,7 +17,7 @@
   #count{font-size:20px;color:var(--dim);white-space:nowrap;}
   #count b{color:var(--good);font-size:28px;}
   #gear{background:#ffffff18;box-shadow:none;padding:8px 14px;font-size:26px;flex:none;border-radius:12px;}
-  #needKey{display:none;background:var(--azure);box-shadow:0 6px 0 #1b5ea3;font-size:22px;padding:16px;}
+  #needKey{flex:none;display:none;background:var(--azure);box-shadow:0 6px 0 #1b5ea3;font-size:22px;padding:16px;}
   #needKey.show{display:block;}
   #poem{flex:1;background:var(--panel);border-radius:20px;padding:22px 26px;overflow:auto;box-shadow:0 0 30px #0008 inset;}
   .line{font-size:33px;line-height:1.55;margin:4px 0;font-weight:700;}
@@ -56,12 +57,44 @@
   #closeSetup{background:#4c47a8 !important;box-shadow:0 6px 0 #2b2868 !important;}
   .confetti{position:fixed;top:-20px;width:12px;height:18px;animation:fall linear forwards;pointer-events:none;z-index:20;}
   @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
+
+  /* ===== 海報風格大字幕 ===== */
+  #poem{display:flex;flex-direction:column;justify-content:safe center;align-items:center;text-align:center;
+        padding:2vh 3vw;font-family:"Fredoka","Arial Rounded MT Bold","PingFang TC",sans-serif;
+        background:radial-gradient(circle at 50% -30%,#8a86b8 0%,#4b4785 16%,transparent 34%),linear-gradient(180deg,#1c1850,#15123f);}
+  .ptitle{font-family:"Fredoka","Arial Rounded MT Bold",sans-serif;font-weight:700;color:#e8463a;
+          font-size:clamp(30px,min(6.5vw,7vh),92px);letter-spacing:2px;line-height:1;margin-bottom:1.6vh;text-shadow:0 3px 0 #00000055;}
+  .line{font-size:clamp(20px,min(4.15vw,4.9vh),66px)!important;line-height:1.3!important;margin:.5vh 0!important;font-weight:600!important;}
+  .w{color:#ffffff!important;text-shadow:0 2px 0 #00000055;}
+  .w.hit,.w.good{color:#5ce07a!important;text-shadow:0 0 18px #5ce07aaa!important;}
+  .w.ok{color:#ffd93b!important;}
+  .w.bad{color:#ff6b6b!important;}
+  h1{font-size:22px!important;}
+
+  /* ===== 南瓜燈 ===== */
+  #poem{position:relative;}
+  .jack{position:absolute;bottom:1.2vh;width:clamp(80px,min(13vw,17vh),190px);pointer-events:none;z-index:0;
+        filter:drop-shadow(0 0 calc(var(--lit,0)*28px) rgba(255,170,40,calc(var(--lit,0)*.9)));transition:filter .4s;}
+  .jack.l{left:1.5vw;transform:rotate(-6deg);} .jack.r{right:1.5vw;transform:rotate(6deg) scaleX(-1);}
+  .jack .face{fill:#ffd23b;opacity:calc(.12 + var(--lit,0)*.88);transition:opacity .4s;}
+  .jack.full .face{animation:flicker 1.1s infinite;}
+  @keyframes flicker{0%,100%{opacity:1}40%{opacity:.75}55%{opacity:.95}70%{opacity:.65}}
+  .ptitle,.line{position:relative;z-index:1;}
+  #bar{position:relative;overflow:visible!important;}
+  #fill{background:linear-gradient(90deg,#c2410c,#ff7a1a,#ffb347)!important;border-radius:7px;}
+  #runner{position:absolute;top:50%;left:0;transform:translate(-50%,-55%);font-size:30px;transition:left .3s;pointer-events:none;}
+  .bigjack{width:min(240px,32vh);animation:pop .6s cubic-bezier(.3,1.6,.5,1) both,bob 1.6s .6s ease-in-out infinite;
+           filter:drop-shadow(0 0 30px rgba(255,170,40,.9));}
+  .bigjack .face{fill:#ffd23b;animation:flicker 1.1s infinite;}
+  @keyframes pop{from{transform:scale(.2) rotate(-20deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-14px) rotate(3deg)}}
+  @media (max-aspect-ratio:1/1){ .jack{width:clamp(80px,22vw,200px);bottom:2vh;} }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <h1>🎃 HALLOWEEN<span class="badge">Azure 評分版</span></h1>
+    <h1>🎃 萬聖節闖關<span class="badge">Azure 評分版</span></h1>
     <div style="display:flex;align-items:center;gap:10px">
       <div id="count">已過關 <b id="n">0</b> 人</div>
       <button id="gear" aria-label="設定">⚙️</button>
@@ -115,13 +148,13 @@
 /* ===== 設定 ===== */
 const LINES = [
   "Ghosts and goblins, glowing giant green,",
-  "Spooky spiders spinning webs that can't be seen.",
+  "Spooky spiders spinning webs | that can't be seen.",
   "Giant monsters giggling behind the screen,",
   "Trick or treat! Bring out the sweet jellybean!",
   "Give me great goodies, good and supreme,",
-  "Or I'll scare you running down the street with a scream!"
+  "Or I'll scare you running down the street | with a scream!"
 ];
-const REFERENCE = LINES.join(' ');
+const REFERENCE = LINES.join(' ').replace(/ \| /g,' ');
 const PASS_COMPLETE = 0.7;   // 整首至少念到 70% 的字
 const LAST_LINE_NEED = 3;    // 最後一句至少念到 3 個字才算念完
 const LOOKAHEAD = 8;         // 對字時最多往後跳幾個字（容許漏念）
@@ -140,10 +173,14 @@ function lsSet(k,v){try{localStorage.setItem(k,v);}catch(_){}}
 /* ===== 建立字詞 ===== */
 function norm(s){return s.toLowerCase().replace(/[^a-z']/g,'').replace(/'/g,'');}
 const poemEl=document.getElementById('poem');
+{const t=document.createElement('div');t.className='ptitle';t.textContent='HALLOWEEN';poemEl.appendChild(t);}
 const words=[];   // {token, el, score, line}
 LINES.forEach((line,li)=>{
   const div=document.createElement('div');div.className='line';
-  line.split(' ').forEach((raw,i)=>{
+  let first=true;
+  line.split(' ').forEach((raw)=>{
+    if(raw==='|'){div.appendChild(document.createElement('br'));first=true;return;}
+    const i=first?0:1; first=false;
     const span=document.createElement('span');span.className='w';span.textContent=(i?' ':'')+raw;
     const token=norm(raw); if(token) words.push({token,el:span,score:null,line:li});
     div.appendChild(span);
@@ -352,6 +389,26 @@ nEl.parentElement.addEventListener('touchend',()=>clearTimeout(pressT));
 /* ===== 啟動 ===== */
 refreshKeyHint();
 if(!getCfg().key) openSetup();
+
+/* ===== 南瓜燈：跟著進度發光 ===== */
+(function(){
+  const SVG='<svg viewBox="0 0 200 180" xmlns="http://www.w3.org/2000/svg"><path d="M96 34c-2-14 4-24 14-28l6 6c-8 4-11 11-10 22z" fill="#3f7d2e"/><path d="M112 14c14-8 28-4 34 6-12-2-22 0-30 6z" fill="#5aa13d"/><ellipse cx="62" cy="104" rx="52" ry="66" fill="#d9590f"/><ellipse cx="138" cy="104" rx="52" ry="66" fill="#d9590f"/><ellipse cx="100" cy="102" rx="54" ry="72" fill="#f07a16"/><ellipse cx="100" cy="102" rx="26" ry="70" fill="#ff8e2b" opacity=".55"/><path d="M48 48c-14 20-14 92 0 112M152 48c14 20 14 92 0 112" stroke="#b9470a" stroke-width="3" fill="none" opacity=".6"/><g class="face"><path d="M58 80l22-4-8 24z"/><path d="M142 80l-22-4 8 24z"/><path d="M93 104l7-12 7 12z"/><path d="M50 122c16 22 84 22 100 0l-10 6-8-8-10 10-10-9-10 9-10-10-8 8z"/></g></svg>';
+  const poem=document.getElementById('poem');
+  ['l','r'].forEach(c=>{const d=document.createElement('div');d.className='jack '+c;d.innerHTML=SVG;poem.appendChild(d);});
+  const bar=document.getElementById('bar'); const r=document.createElement('div'); r.id='runner'; r.textContent='🎃'; bar.appendChild(r);
+  const big=document.querySelector('#overlay .big'); if(big){big.className='bigjack';big.innerHTML=SVG;}
+  const fillEl=document.getElementById('fill');
+  function sync(){
+    const p=Math.max(0,Math.min(100,parseFloat(fillEl.style.width)||0));
+    r.style.left=p+'%';
+    document.querySelectorAll('.jack').forEach(j=>{j.style.setProperty('--lit',(p/100).toFixed(2));j.classList.toggle('full',p>=70);});
+  }
+  new MutationObserver(sync).observe(fillEl,{attributes:true,attributeFilter:['style']});
+  sync();
+  // 過關時重新觸發彈跳動畫
+  const ov=document.getElementById('overlay');
+  new MutationObserver(()=>{const b=ov.querySelector('.bigjack');if(b&&ov.classList.contains('show')){b.style.animation='none';void b.offsetWidth;b.style.animation='';}}).observe(ov,{attributes:true,attributeFilter:['class']});
+})();
 </script>
 </body>
 </html>
