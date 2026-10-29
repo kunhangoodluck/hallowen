@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Halloween AI 關主</title>
+<style>
+  :root{--bg:#0d0b2b;--panel:#1a1747;--accent:#ff7a1a;--good:#5ce07a;--text:#fff;--dim:#9b97c9;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at top,#2a2470 0%,var(--bg) 60%);color:var(--text);font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;overflow:hidden;}
+  #app{display:flex;flex-direction:column;height:100%;padding:16px;gap:12px;}
+  header{display:flex;justify-content:space-between;align-items:center;}
+  h1{margin:0;font-size:34px;color:var(--accent);letter-spacing:3px;text-shadow:0 0 18px #ff7a1a88;}
+  #count{font-size:20px;color:var(--dim);}
+  #count b{color:var(--good);font-size:28px;}
+  #poem{flex:1;background:var(--panel);border-radius:20px;padding:22px 26px;overflow:auto;box-shadow:0 0 30px #0008 inset;}
+  .line{font-size:34px;line-height:1.55;margin:4px 0;font-weight:700;}
+  .w{transition:color .25s,text-shadow .25s;color:#d9d6ff;}
+  .w.hit{color:var(--good);text-shadow:0 0 14px #5ce07a99;}
+  #status{min-height:64px;background:#00000040;border-radius:14px;padding:10px 16px;font-size:22px;display:flex;align-items:center;gap:12px;}
+  #mic{width:16px;height:16px;border-radius:50%;background:#555;flex:none;}
+  #mic.on{background:#ff3b3b;animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
+  #heard{color:var(--dim);font-size:18px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #bar{height:14px;background:#00000060;border-radius:7px;overflow:hidden;}
+  #fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--good));transition:width .3s;}
+  #btns{display:flex;gap:12px;}
+  button{flex:1;border:none;border-radius:16px;padding:20px 10px;font-size:26px;font-weight:700;color:#fff;cursor:pointer;}
+  #start{background:var(--accent);box-shadow:0 6px 0 #b24f00;}
+  #start.listening{background:#c0392b;box-shadow:0 6px 0 #7a1d14;}
+  #demo{background:#4c47a8;box-shadow:0 6px 0 #2b2868;flex:.6;}
+  #pass{background:var(--good);color:#0d0b2b;box-shadow:0 6px 0 #2f8a46;flex:.6;}
+  button:active{transform:translateY(4px);box-shadow:none;}
+  #overlay{position:fixed;inset:0;background:#0d0b2bee;display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center;padding:30px;}
+  #overlay.show{display:flex;}
+  #overlay .big{font-size:120px;}
+  #overlay .msg{font-size:46px;font-weight:800;color:var(--good);}
+  #overlay .sub{font-size:30px;color:var(--text);}
+  #overlay .cn{font-size:26px;color:var(--dim);}
+  #overlay button{flex:none;width:260px;background:var(--accent);box-shadow:0 6px 0 #b24f00;}
+  .confetti{position:fixed;top:-20px;width:12px;height:18px;animation:fall linear forwards;pointer-events:none;}
+  @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
+  #settings{position:fixed;left:16px;bottom:16px;font-size:14px;color:var(--dim);display:flex;gap:14px;align-items:center;}
+  #settings input{width:70px;font-size:16px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🎃 HALLOWEEN</h1>
+    <div id="count">已過關 <b id="n">0</b> 人</div>
+  </header>
+  <div id="poem"></div>
+  <div id="bar"><div id="fill"></div></div>
+  <div id="status"><div id="mic"></div><div id="heard">按「開始念」然後對著麥克風念出來！</div></div>
+  <div id="btns">
+    <button id="demo">🔊 範讀</button>
+    <button id="start">🎤 開始念</button>
+    <button id="pass">✅ 直接過關</button>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="big">🍬👻🍬</div>
+  <div class="msg" id="ovMsg">Great job!</div>
+  <div class="sub" id="ovSub">You did it!</div>
+  <div class="cn">念完了，去領糖果吧！</div>
+  <button id="next">下一位 ▶</button>
+</div>
+
+<script>
+/* ===== 設定 ===== */
+const LINES = [
+  "Ghosts and goblins, glowing giant green,",
+  "Spooky spiders spinning webs that can't be seen.",
+  "Giant monsters giggling behind the screen,",
+  "Trick or treat! Bring out the sweet jellybean!",
+  "Give me great goodies, good and supreme,",
+  "Or I'll scare you running down the street with a scream!"
+];
+const PASS_RATIO = 0.6;      // 念到 60% 的字就算過關
+const SILENCE_SEC = 12;      // 開始後若 12 秒沒進展，給鼓勵並過關
+const STOPWORDS = new Set(["and","the","or","me","out","that","be","with","a","you","down"]);
+const CHEERS = [
+  ["Great job!", "You did it!"],
+  ["Wonderful!", "What a brave trick-or-treater!"],
+  ["Awesome!", "You scared all the ghosts away!"],
+  ["Excellent!", "Happy Halloween!"],
+  ["Fantastic!", "The pumpkins are proud of you!"],
+  ["Super!", "Go get your candy!"]
+];
+const TRY_CHEERS = [
+  ["Nice try!", "You were so brave to read it!"],
+  ["Good effort!", "Keep practicing, you're doing great!"]
+];
+
+/* ===== 建立字詞 ===== */
+const poemEl = document.getElementById('poem');
+const words = [];               // {token, el, hit}
+LINES.forEach(line=>{
+  const div=document.createElement('div');div.className='line';
+  line.split(' ').forEach((raw,i)=>{
+    const span=document.createElement('span');span.className='w';span.textContent=(i?' ':'')+raw;
+    const token=norm(raw);
+    if(token && !STOPWORDS.has(token)) words.push({token,el:span,hit:false});
+    div.appendChild(span);
+  });
+  poemEl.appendChild(div);
+});
+function norm(s){return s.toLowerCase().replace(/[^a-z']/g,'').replace(/'/g,'');}
+// 近似比對：允許前綴 / 相似（給辨識容錯）
+function similar(a,b){
+  if(a===b) return true;
+  if(a.length>=4 && b.length>=4 && (a.startsWith(b.slice(0,4))||b.startsWith(a.slice(0,4)))) return true;
+  return false;
+}
+
+/* ===== 狀態 ===== */
+let listening=false, rec=null, lastProgress=0, timer=null, passed=false;
+const fill=document.getElementById('fill'), heard=document.getElementById('heard'),
+      mic=document.getElementById('mic'), startBtn=document.getElementById('start');
+const nEl=document.getElementById('n');
+let count=parseInt(localStorage.getItem('hw_count')||'0'); nEl.textContent=count;
+
+function matchTranscript(text){
+  const toks=text.toLowerCase().split(/\s+/).map(norm).filter(Boolean);
+  let changed=false;
+  words.forEach(w=>{
+    if(w.hit) return;
+    if(toks.some(t=>similar(t,w.token))){w.hit=true;w.el.classList.add('hit');changed=true;}
+  });
+  const hits=words.filter(w=>w.hit).length;
+  fill.style.width=(hits/words.length*100)+'%';
+  if(changed) lastProgress=Date.now();
+  if(!passed && hits/words.length>=PASS_RATIO) finish(true);
+}
+
+/* ===== 語音辨識 ===== */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function startListening(){
+  if(!SR){alert('這個瀏覽器不支援語音辨識，請用 iPad 的 Safari 開啟。');return;}
+  resetWords();
+  rec=new SR(); rec.lang='en-US'; rec.continuous=true; rec.interimResults=true; rec.maxAlternatives=3;
+  rec.onresult=e=>{
+    let all='';
+    for(let i=0;i<e.results.length;i++){
+      for(let j=0;j<e.results[i].length;j++) all+=' '+e.results[i][j].transcript;
+    }
+    heard.textContent=e.results[e.results.length-1][0].transcript;
+    matchTranscript(all);
+  };
+  rec.onerror=e=>{ if(e.error==='not-allowed'){heard.textContent='請允許使用麥克風（Safari 會跳出詢問）';stopListening();} };
+  rec.onend=()=>{ if(listening && !passed){ try{rec.start();}catch(_){} } }; // iOS 會自動中斷，重啟
+  try{rec.start();}catch(_){}
+  listening=true; passed=false; lastProgress=Date.now();
+  mic.classList.add('on'); startBtn.textContent='⏹ 停止'; startBtn.classList.add('listening');
+  heard.textContent='我在聽囉… Go!';
+  speak("Ready? Go!");
+  timer=setInterval(()=>{
+    if(!listening||passed) return;
+    const hits=words.filter(w=>w.hit).length;
+    if(Date.now()-lastProgress>SILENCE_SEC*1000 && hits>0) finish(false);   // 念了一些但卡住 → 鼓勵過關
+    else if(Date.now()-lastProgress>SILENCE_SEC*2000) finish(false);        // 完全沒收到 → 也放行
+  },500);
+}
+function stopListening(){
+  listening=false; clearInterval(timer);
+  if(rec){rec.onend=null; try{rec.stop();}catch(_){}}
+  mic.classList.remove('on'); startBtn.textContent='🎤 開始念'; startBtn.classList.remove('listening');
+}
+function resetWords(){ words.forEach(w=>{w.hit=false;w.el.classList.remove('hit');}); fill.style.width='0'; }
+
+/* ===== 過關 ===== */
+function finish(good){
+  if(passed) return; passed=true; stopListening();
+  const pool=good?CHEERS:TRY_CHEERS;
+  const [a,b]=pool[Math.floor(Math.random()*pool.length)];
+  document.getElementById('ovMsg').textContent=a;
+  document.getElementById('ovSub').textContent=b;
+  document.getElementById('overlay').classList.add('show');
+  count++; localStorage.setItem('hw_count',count); nEl.textContent=count;
+  confetti(); speak(a+' '+b);
+}
+document.getElementById('next').onclick=()=>{
+  document.getElementById('overlay').classList.remove('show');
+  resetWords(); passed=false; heard.textContent='下一位，按「開始念」！';
+};
+document.getElementById('pass').onclick=()=>finish(true);
+startBtn.onclick=()=>listening?stopListening():startListening();
+
+/* ===== 範讀 / 語音 ===== */
+let voice=null;
+function pickVoice(){
+  const vs=speechSynthesis.getVoices();
+  voice=vs.find(v=>/en[-_]US/i.test(v.lang)&&/Samantha|Ava|Allison|Google US/i.test(v.name))||vs.find(v=>/en[-_]US/i.test(v.lang))||vs.find(v=>/^en/i.test(v.lang))||null;
+}
+if('speechSynthesis' in window){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+function speak(text,rate=0.9){
+  if(!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text); u.lang='en-US'; u.rate=rate; if(voice) u.voice=voice;
+  speechSynthesis.speak(u);
+}
+document.getElementById('demo').onclick=()=>{ if(listening) stopListening(); speak(LINES.join(' '),0.8); };
+
+/* ===== 彩帶 ===== */
+function confetti(){
+  const colors=['#ff7a1a','#5ce07a','#a86bff','#ffd93b','#fff'];
+  for(let i=0;i<90;i++){
+    const c=document.createElement('div');c.className='confetti';
+    c.style.left=Math.random()*100+'vw';c.style.background=colors[i%colors.length];
+    c.style.animationDuration=(2+Math.random()*2)+'s';c.style.animationDelay=(Math.random()*.8)+'s';
+    document.body.appendChild(c);setTimeout(()=>c.remove(),5000);
+  }
+}
+/* 長按計數可歸零 */
+let pressT; nEl.parentElement.addEventListener('touchstart',()=>{pressT=setTimeout(()=>{if(confirm('把過關人數歸零？')){count=0;localStorage.setItem('hw_count',0);nEl.textContent=0;}},1500);});
+nEl.parentElement.addEventListener('touchend',()=>clearTimeout(pressT));
+</script>
+</body>
+</html>
