@@ -79,8 +79,11 @@ const LINES = [
   "Give me great goodies, good and supreme,",
   "Or I'll scare you running down the street with a scream!"
 ];
-const PASS_RATIO = 0.6;      // 念到 60% 的字就算過關
-const SILENCE_SEC = 12;      // 開始後若 12 秒沒進展，給鼓勵並過關
+const PASS_RATIO = 0.7;      // 整首至少念到 70% 的字
+const LAST_LINE_NEED = 3;    // 最後一句至少要念到 3 個字才算「念完」
+const LOOKAHEAD = 6;         // 照順序比對時，最多往後跳幾個字（容許漏念）
+const FINISH_DELAY = 1500;   // 判定念完後再多等 1.5 秒，讓小朋友把最後幾個字講完
+const SILENCE_SEC = 15;      // 15 秒沒有任何進展，給鼓勵並放行
 const STOPWORDS = new Set(["and","the","or","me","out","that","be","with","a","you","down"]);
 const CHEERS = [
   ["Great job!", "You did it!"],
@@ -97,43 +100,63 @@ const TRY_CHEERS = [
 
 /* ===== 建立字詞 ===== */
 const poemEl = document.getElementById('poem');
-const words = [];               // {token, el, hit}
-LINES.forEach(line=>{
+const words = [];               // {token, el, hit, line}
+LINES.forEach((line,li)=>{
   const div=document.createElement('div');div.className='line';
   line.split(' ').forEach((raw,i)=>{
     const span=document.createElement('span');span.className='w';span.textContent=(i?' ':'')+raw;
     const token=norm(raw);
-    if(token && !STOPWORDS.has(token)) words.push({token,el:span,hit:false});
+    if(token && !STOPWORDS.has(token)) words.push({token,el:span,hit:false,line:li});
     div.appendChild(span);
   });
   poemEl.appendChild(div);
 });
 function norm(s){return s.toLowerCase().replace(/[^a-z']/g,'').replace(/'/g,'');}
-// 近似比對：允許前綴 / 相似（給辨識容錯）
+// 近似比對：完全相同，或長字只差一個字母（辨識容錯）
 function similar(a,b){
   if(a===b) return true;
-  if(a.length>=4 && b.length>=4 && (a.startsWith(b.slice(0,4))||b.startsWith(a.slice(0,4)))) return true;
-  return false;
+  if(a.length<5 || b.length<5 || Math.abs(a.length-b.length)>1) return false;
+  return lev(a,b)<=1;
+}
+function lev(a,b){
+  const d=Array.from({length:a.length+1},(_,i)=>[i]);
+  for(let j=1;j<=b.length;j++) d[0][j]=j;
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++)
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length];
 }
 
 /* ===== 狀態 ===== */
-let listening=false, rec=null, lastProgress=0, timer=null, passed=false;
+let listening=false, rec=null, lastProgress=0, timer=null, passed=false, finishTimer=null;
 const fill=document.getElementById('fill'), heard=document.getElementById('heard'),
       mic=document.getElementById('mic'), startBtn=document.getElementById('start');
 const nEl=document.getElementById('n');
 let count=parseInt(localStorage.getItem('hw_count')||'0'); nEl.textContent=count;
 
+// 照順序比對：每次都從頭重新對整段辨識文字，只能往前走、最多跳 LOOKAHEAD 個字
 function matchTranscript(text){
   const toks=text.toLowerCase().split(/\s+/).map(norm).filter(Boolean);
+  let cursor=0; const hitIdx=new Set();
+  toks.forEach(t=>{
+    for(let i=cursor;i<Math.min(cursor+LOOKAHEAD,words.length);i++){
+      if(similar(t,words[i].token)){hitIdx.add(i);cursor=i+1;break;}
+    }
+  });
   let changed=false;
-  words.forEach(w=>{
-    if(w.hit) return;
-    if(toks.some(t=>similar(t,w.token))){w.hit=true;w.el.classList.add('hit');changed=true;}
+  words.forEach((w,i)=>{
+    const h=hitIdx.has(i);
+    if(h && !w.hit){changed=true;}
+    // 已亮的字不熄滅（避免辨識修正時閃爍）
+    if(h) {w.hit=true;w.el.classList.add('hit');}
   });
   const hits=words.filter(w=>w.hit).length;
   fill.style.width=(hits/words.length*100)+'%';
   if(changed) lastProgress=Date.now();
-  if(!passed && hits/words.length>=PASS_RATIO) finish(true);
+  const lastLine=LINES.length-1;
+  const lastHits=words.filter(w=>w.line===lastLine && w.hit).length;
+  if(!passed && !finishTimer && hits/words.length>=PASS_RATIO && lastHits>=LAST_LINE_NEED){
+    finishTimer=setTimeout(()=>{finishTimer=null; if(listening) finish(true);},FINISH_DELAY);
+  }
 }
 
 /* ===== 語音辨識 ===== */
@@ -142,25 +165,26 @@ function startListening(){
   if(!SR){alert('這個瀏覽器不支援語音辨識，請用 iPad 的 Safari 開啟。');return;}
   resetWords();
   rec=new SR(); rec.lang='en-US'; rec.continuous=true; rec.interimResults=true; rec.maxAlternatives=3;
+  let prevText='', sessionText='';
   rec.onresult=e=>{
-    let all='';
-    for(let i=0;i<e.results.length;i++){
-      for(let j=0;j<e.results[i].length;j++) all+=' '+e.results[i][j].transcript;
-    }
+    sessionText='';
+    for(let i=0;i<e.results.length;i++) sessionText+=' '+e.results[i][0].transcript;
     heard.textContent=e.results[e.results.length-1][0].transcript;
-    matchTranscript(all);
+    matchTranscript(prevText+' '+sessionText);
   };
   rec.onerror=e=>{ if(e.error==='not-allowed'){heard.textContent='請允許使用麥克風（Safari 會跳出詢問）';stopListening();} };
-  rec.onend=()=>{ if(listening && !passed){ try{rec.start();}catch(_){} } }; // iOS 會自動中斷，重啟
+  // iOS 會自動中斷，重啟時把這一段聽到的內容保留下來
+  rec.onend=()=>{ prevText+=' '+sessionText; sessionText=''; if(listening && !passed){ try{rec.start();}catch(_){} } };
   try{rec.start();}catch(_){}
   listening=true; passed=false; lastProgress=Date.now();
-  mic.classList.add('on'); startBtn.textContent='⏹ 停止'; startBtn.classList.add('listening');
+  mic.classList.add('on'); startBtn.textContent='⏹ 念完了'; startBtn.classList.add('listening');
   heard.textContent='我在聽囉… Go!';
   speak("Ready? Go!");
   timer=setInterval(()=>{
     if(!listening||passed) return;
     const hits=words.filter(w=>w.hit).length;
-    if(Date.now()-lastProgress>SILENCE_SEC*1000 && hits>0) finish(false);   // 念了一些但卡住 → 鼓勵過關
+    if(finishTimer) return;
+    if(Date.now()-lastProgress>SILENCE_SEC*1000 && hits>0) finish(hits/words.length>=PASS_RATIO);   // 念了一些但停住
     else if(Date.now()-lastProgress>SILENCE_SEC*2000) finish(false);        // 完全沒收到 → 也放行
   },500);
 }
@@ -169,7 +193,7 @@ function stopListening(){
   if(rec){rec.onend=null; try{rec.stop();}catch(_){}}
   mic.classList.remove('on'); startBtn.textContent='🎤 開始念'; startBtn.classList.remove('listening');
 }
-function resetWords(){ words.forEach(w=>{w.hit=false;w.el.classList.remove('hit');}); fill.style.width='0'; }
+function resetWords(){ clearTimeout(finishTimer); finishTimer=null; words.forEach(w=>{w.hit=false;w.el.classList.remove('hit');}); fill.style.width='0'; }
 
 /* ===== 過關 ===== */
 function finish(good){
@@ -187,7 +211,12 @@ document.getElementById('next').onclick=()=>{
   resetWords(); passed=false; heard.textContent='下一位，按「開始念」！';
 };
 document.getElementById('pass').onclick=()=>finish(true);
-startBtn.onclick=()=>listening?stopListening():startListening();
+// 念的時候按「念完了」：念到 70% 給大鼓勵，不到也給 Nice try 放行
+startBtn.onclick=()=>{
+  if(!listening) return startListening();
+  const hits=words.filter(w=>w.hit).length;
+  finish(hits/words.length>=PASS_RATIO);
+};
 
 /* ===== 範讀 / 語音 ===== */
 let voice=null;
