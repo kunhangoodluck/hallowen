@@ -69,6 +69,8 @@
   #start{background:var(--accent);box-shadow:0 6px 0 #b24f00;}
   #start.listening{background:#c0392b;box-shadow:0 6px 0 #7a1d14;}
   #demo{background:#4c47a8;box-shadow:0 6px 0 #2b2868;flex:.7;}
+  #skip{background:#1f8a8a;box-shadow:0 6px 0 #11595a;flex:.6;}
+  #skip:disabled{opacity:.35;}
   #pass{background:var(--good);color:#0d0b2b;box-shadow:0 6px 0 #2f8a46;flex:.6;}
   #btns button:active{transform:translateY(4px);box-shadow:none;}
 
@@ -113,6 +115,7 @@
   <div id="btns">
     <button id="demo">🔊 示範這句</button>
     <button id="start">🎤 開始念</button>
+    <button id="skip">⏭ 下一句</button>
     <button id="pass">✅ 直接過關</button>
   </div>
 </div>
@@ -134,10 +137,11 @@ const SEGS = [                       // 照海報斷句，一次只出現一句
   "Giant monsters giggling behind the screen,",
   "Trick or treat! Bring out the sweet jellybean!",
   "Give me great goodies, good and supreme,",
-  "Or I'll scare you running down the street",
-  "with a scream!"
+  "Or I'll scare you running down the street with a scream!"
 ];
 const HELP_SEC   = 6;     // 自己念模式：卡住幾秒，系統念給他聽
+const AUTO_NEXT_RATIO = 0.6;  // 這句念到 6 成的字…
+const AUTO_NEXT_SEC   = 1.5;  // …而且停了 1.5 秒，就自動跳下一句（辨識模糊時不會卡住）
 const MAX_HELP   = 2;     // 同一句最多幫幾次，再卡就直接跳下一句
 const LOOK_KEYS  = 3;     // 比對時最多往後跳幾個「重要字」（容許漏念）
 const SPEAK_RATE = 0.8;   // 示範念的速度
@@ -292,6 +296,14 @@ function demoThenListen(){
   $('heard').textContent='🔊 '+SEGS[s];
   speak(SEGS[s],SPEAK_RATE,()=>{ if(phase==='speak') listen(); });
 }
+function skipTo(c,msg){
+  if(phase==='idle'||phase==='done') return;
+  stopRec(); if('speechSynthesis' in window) speechSynthesis.cancel();
+  cursor=Math.min(c,N); lastProgress=Date.now(); render();
+  if(cursor>=N){ phase='done'; setHint('🎉 念完了！','listen'); setTimeout(()=>finish(true),700); return; }
+  phase='speak'; setHint(msg||'👍 下一句！','listen');
+  setTimeout(()=>{ if(phase!=='speak') return; mode==='follow'?demoThenListen():listen(); },600);
+}
 function help(){
   const s=segOf(cursor);
   helps[s]=(helps[s]||0)+1; helpedAny=true;
@@ -311,7 +323,11 @@ function startAll(){
   resetAll();
   $('start').textContent='⏹ 念完了'; $('start').classList.add('listening');
   timer=setInterval(()=>{
-    if(phase==='listen' && Date.now()-lastProgress>HELP_SEC*1000) help();
+    if(phase!=='listen') return;
+    const s=segOf(cursor), a=segStart[s], z=segStart[s+1];
+    const idle=Date.now()-lastProgress;
+    if(cursor>a && (cursor-a)/(z-a)>=AUTO_NEXT_RATIO && idle>AUTO_NEXT_SEC*1000){ skipTo(z,'👍 很好！下一句'); return; }
+    if(idle>HELP_SEC*1000) help();
   },400);
   if(mode==='follow'){ phase='speak'; speak('Listen and repeat after me!',0.9,demoThenListen); setHint('👂 先聽我念…','speak'); }
   else { phase='speak'; speak('Ready? Go!',0.95,listen); }
@@ -341,6 +357,7 @@ $('start').onclick=()=>{
   finish(cursor/N>=0.5);                                  // 念到一半按「念完了」
 };
 $('pass').onclick=()=>finish(true);
+$('skip').onclick=()=>{ if(phase==='idle'||phase==='done') return; skipTo(segStart[segOf(cursor)+1],'⏭ 老師幫你跳到下一句'); };
 $('demo').onclick=()=>{
   if(phase==='idle'){ speak(SEGS[Math.min(segOf(cursor),SEGS.length-1)],SPEAK_RATE); return; }
   if(phase==='done') return;
