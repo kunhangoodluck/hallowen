@@ -72,6 +72,7 @@
   .w{color:#ffffff!important;text-shadow:0 2px 0 #00000055;cursor:pointer;border-radius:.15em;}
   .w.tap{animation:tap .7s ease-out;}
   #poem{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  .w.sung{color:#ffe08a!important;text-shadow:0 0 12px #ffcf3b88,0 2px 0 #00000066!important;}
   .w.slide{background:#7fd3ff40;box-shadow:0 0 0 .08em #7fd3ff80;}
   @keyframes tap{0%{background:#7fd3ff00}25%{background:#7fd3ff88}100%{background:#7fd3ff00}}
   #taptip{position:relative;z-index:1;margin-top:1vh;font-size:clamp(14px,min(1.9vw,2.4vh),22px);color:#7fd3ff;font-family:-apple-system,"PingFang TC",sans-serif;}
@@ -188,7 +189,7 @@ const REFERENCE = LINES.join(' ').replace(/ \| /g,' ');
 const PASS_COMPLETE = 0.7;   // 整首至少念到 70% 的字
 const LAST_LINE_NEED = 3;    // 最後一句至少念到 3 個字才算念完
 const LOOKAHEAD = 8;         // 對字時最多往後跳幾個字（容許漏念）
-const FINISH_DELAY = 1500;   // 判定念完後多等 1.5 秒
+const FINISH_DELAY = 1800;   // 判定念完後多等 1.5 秒
 const SILENCE_SEC = 15;      // 15 秒沒有進度就結算
 const STAR_COMPLETE = 0.85;  // 真實完整度 85% 以上
 const STAR_ACCURACY = 80;    // 而且真實發音 80 分以上 → 額外給「發音小達人」
@@ -268,51 +269,92 @@ let sdkReady=false;
   tryNext();
 })();
 
-/* ===== 把 Azure 回傳的字對到詩句上 ===== */
-function applyWords(azWords){
-  let changed=false;
-  azWords.forEach(aw=>{
-    const t=norm(aw.Word||''); if(!t) return;
-    const pa=aw.PronunciationAssessment||{};
-    if(pa.ErrorType==='Insertion'||pa.ErrorType==='Omission') return;
-    for(let i=cursor;i<Math.min(cursor+LOOKAHEAD,words.length);i++){
-      if(words[i].score===null && words[i].token===t){
-        const s=(typeof pa.AccuracyScore==='number')?pa.AccuracyScore:0;
-        words[i].score=s;
-        words[i].el.classList.add(s>=80?'good':s>=60?'ok':'bad');
-        for(let j=cursor;j<i;j++) if(words[j].score===null) words[j].score=-1; // 漏念
-        cursor=i+1; changed=true; break;
-      }
+/* ===== 進度：用「邊聽邊回報」的文字即時亮字；分數等 Azure 一段結束再補上 ===== */
+const STOPW=new Set(["and","the","or","me","out","that","be","with","a","you","down","ill","i"]);
+function lev(a,b){const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1;j<=b.length;j++)d[0][j]=j;
+  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[a.length][b.length];}
+function similar(a,b){if(a===b)return true;if(a.length<5||b.length<5||Math.abs(a.length-b.length)>1)return false;return lev(a,b)<=1;}
+const NW=words.length;
+function matchFrom(start,tokens){
+  let c=start;
+  for(const t of tokens){
+    if(c>=NW) break;
+    if(similar(t,words[c].token)){c++;continue;}
+    let keys=0;
+    for(let i=c;i<NW;i++){
+      if(STOPW.has(words[i].token)) continue;
+      if(similar(t,words[i].token)){c=i+1;break;}
+      if(++keys>=3) break;
     }
+  }
+  return c;
+}
+let scoreCur=0, finalsText='', muteUntil=0;
+function paintAll(){
+  words.forEach((w,i)=>{
+    const sc=w.score, has=sc!==null&&sc>=0, cl=w.el.classList;
+    cl.toggle('sung',!has&&i<cursor);
+    cl.toggle('good',has&&sc>=80); cl.toggle('ok',has&&sc>=60&&sc<80); cl.toggle('bad',has&&sc<60);
   });
-  if(changed) lastProgress=Date.now();
-  const read=words.filter(w=>w.score!==null&&w.score>=0);
-  fill.style.width=(read.length/words.length*100)+'%';
-  const lastLine=LINES.length-1;
-  const lastHits=read.filter(w=>w.line===lastLine).length;
-  if(!passed && !finishTimer &&
-     (cursor>=words.length || (read.length/words.length>=PASS_COMPLETE && lastHits>=LAST_LINE_NEED))){
+  fill.style.width=(cursor/NW*100)+'%';
+}
+function checkFinish(){
+  if(passed||finishTimer) return;
+  const last=LINES.length-1;
+  const lastHits=words.filter((w,i)=>w.line===last&&i<cursor).length;
+  if(cursor>=NW || (cursor/NW>=PASS_COMPLETE && lastHits>=LAST_LINE_NEED)){
+    heard.textContent='🎉 念完了！評分中…';
     finishTimer=setTimeout(()=>{finishTimer=null; if(listening) finish(false);},FINISH_DELAY);
   }
 }
+function trackText(text){
+  const toks=text.toLowerCase().split(/\s+/).map(norm).filter(Boolean);
+  const c=matchFrom(0,toks);
+  if(c>cursor){ cursor=c; lastProgress=Date.now(); paintAll(); checkFinish(); }
+}
+function applyScores(azWords){
+  let c=scoreCur;
+  azWords.forEach(aw=>{
+    const pa=aw.PronunciationAssessment||{};
+    if(pa.ErrorType==='Omission') return;           // 「漏念」的字不算
+    const t=norm(aw.Word||''); if(!t) return;
+    for(let i=c;i<Math.min(c+8,NW);i++){
+      if(words[i].score===null&&similar(t,words[i].token)){
+        words[i].score=(typeof pa.AccuracyScore==='number')?pa.AccuracyScore:75; c=i+1; break;
+      }
+    }
+  });
+  scoreCur=c;
+  if(scoreCur>cursor){ cursor=scoreCur; lastProgress=Date.now(); }
+  paintAll(); checkFinish();
+}
 
-/* ===== 點讀：點一下字就念出來 ===== */
+/* ===== 點讀：點一下念兩次；手指滑過去，滑到哪個字念哪個字 ===== */
 let paused=false;
+let ttsPending=null, ttsTimer=null;
+function rawSpeak(text,rate,onend){
+  const go=()=>{ const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=rate;if(voice)u.voice=voice;
+    if(onend){u.onend=onend;u.onerror=onend;} speechSynthesis.speak(u); };
+  if(speechSynthesis.speaking||speechSynthesis.pending){ speechSynthesis.cancel(); setTimeout(go,60); }  // iPad：取消後馬上講會卡住
+  else go();
+}
 function speakCb(text,rate,done){
   let fired=false; const fire=()=>{if(fired)return;fired=true;done&&done();};
   if(!('speechSynthesis' in window)){setTimeout(fire,300);return;}
-  speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=rate;if(voice)u.voice=voice;
-  u.onend=fire;u.onerror=fire; speechSynthesis.speak(u);
-  setTimeout(fire,1500+text.length*150);           // iPad 偶爾不觸發 onend 的保險
+  rawSpeak(text,rate,fire);
+  setTimeout(fire,1200+text.length*120);
 }
-/* 手指點一下：念兩次；手指滑過去：滑到哪個字就念哪個字（像點讀筆） */
-const cleanW=sp=>sp.textContent.replace(/[^A-Za-z']/g,'');
-function sayNow(w,rate){ if(!('speechSynthesis' in window)) return; speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(w);u.lang='en-US';u.rate=rate;if(voice)u.voice=voice;speechSynthesis.speak(u); }
+function sayNow(w,rate){                             // 手指滑很快時，最多每 0.28 秒念一個字，永遠念最新的那個
+  if(!('speechSynthesis' in window)) return;
+  ttsPending=[w,rate]; if(ttsTimer) return;
+  const go=()=>{ ttsTimer=null; if(!ttsPending) return; const [ww,rr]=ttsPending; ttsPending=null;
+    rawSpeak(ww,rr); ttsTimer=setTimeout(go,280); };
+  go();
+}
 function whenQuiet(cb){ const t0=Date.now(); (function poll(){
-  if(!('speechSynthesis' in window)||!speechSynthesis.speaking||Date.now()-t0>5000) return setTimeout(cb,120);
-  setTimeout(poll,120); })(); }
+  if(!('speechSynthesis' in window)||(!speechSynthesis.speaking&&!ttsTimer)||Date.now()-t0>2500) return setTimeout(cb,80);
+  setTimeout(poll,100); })(); }
+const cleanW=sp=>sp.textContent.replace(/[^A-Za-z']/g,'');
 function wordAt(x,y){ const el=document.elementFromPoint(x,y); return el&&el.closest?el.closest('#poem .w'):null; }
 let gest=null;
 function touchWord(g,sp){
@@ -322,20 +364,14 @@ function touchWord(g,sp){
   sp.classList.remove('tap'); void sp.offsetWidth; sp.classList.add('tap');
   const w=cleanW(sp); if(!w) return;
   heard.textContent='🔊 '+w;
-  if(g.ready) sayNow(w,g.moved?0.85:0.65); else g.pending=w;
+  sayNow(w,g.moved?0.85:0.65);
 }
 poemEl.addEventListener('pointerdown',e=>{
   const sp=wordAt(e.clientX,e.clientY); if(!sp) return;
-  if(paused&&!gest) return;                         // 上一次還在恢復收音
   e.preventDefault();
-  const g={r:null,first:sp,last:null,moved:false,ready:true,pending:null}; gest=g;
-  if(listening&&recognizer){                        // 正在收音：先暫停，避免把 iPad 的聲音當成學生念的
-    paused=true; g.r=recognizer; g.ready=false;
-    const ok=()=>{ g.ready=true; if(g.pending){ sayNow(g.pending,g.moved?0.85:0.65); g.pending=null; } };
-    try{ g.r.stopContinuousRecognitionAsync(ok,ok); }catch(_){ ok(); }
-    setTimeout(()=>{ if(!g.ready) ok(); },1500);
-  }
-  touchWord(g,sp);
+  gest={first:sp,last:null,moved:false,id:e.pointerId};
+  if(listening){ paused=true; muteUntil=Infinity; }  // 收音不關，只是先不採計（避免 iPad 的聲音被當成學生念的）
+  touchWord(gest,sp);
 });
 poemEl.addEventListener('pointermove',e=>{
   if(!gest) return; e.preventDefault();
@@ -344,17 +380,8 @@ poemEl.addEventListener('pointermove',e=>{
 function endGesture(){
   if(!gest) return; const g=gest; gest=null;
   document.querySelectorAll('#poem .w.slide').forEach(x=>x.classList.remove('slide'));
-  const resume=()=>{
-    if(!g.r){ return; }
-    if(listening && recognizer===g.r){
-      g.r.startContinuousRecognitionAsync(()=>{paused=false;lastProgress=Date.now();heard.textContent='我在聽囉，繼續念！';},()=>{paused=false;});
-    } else paused=false;
-  };
-  const after=()=>whenQuiet(()=>{
-    if(!g.moved){ const w=cleanW(g.first); speakCb(w,0.65,resume); }   // 點一下：再念第二次
-    else resume();
-  });
-  (function waitReady(){ g.ready?after():setTimeout(waitReady,100); })();
+  const resume=()=>{ if(listening){ muteUntil=Date.now()+700; paused=false; lastProgress=Date.now(); heard.textContent='我在聽囉，繼續念！'; } else { muteUntil=0; paused=false; } };
+  whenQuiet(()=>{ if(!g.moved) speakCb(cleanW(g.first),0.65,resume); else resume(); });
 }
 ['pointerup','pointercancel'].forEach(t=>poemEl.addEventListener(t,endGesture));
 window.addEventListener('pointerup',endGesture);
@@ -368,7 +395,7 @@ function startListening(){
   try{
     const cfg=SpeechSDK.SpeechConfig.fromSubscription(key,region);
     cfg.speechRecognitionLanguage='en-US';
-    cfg.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs,'1200');
+    cfg.setProperty(SpeechSDK.PropertyId.Speech_SegmentationSilenceTimeoutMs,'800');
     const audio=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
     recognizer=new SpeechSDK.SpeechRecognizer(cfg,audio);
     const pa=new SpeechSDK.PronunciationAssessmentConfig(
@@ -378,19 +405,28 @@ function startListening(){
       true);
     pa.applyTo(recognizer);
   }catch(err){heard.textContent='❌ 無法建立辨識：'+err;return;}
-
-  recognizer.recognizing=(s,e)=>{ if(e.result&&e.result.text) heard.textContent='🎧 '+e.result.text; };
-  recognizer.recognized=(s,e)=>{
+  const r=recognizer;
+  r.recognizing=(s,e)=>{
+    if(recognizer!==r||Date.now()<muteUntil) return;
+    const t=(e.result&&e.result.text)||''; if(!t) return;
+    heard.textContent='🎧 '+t;
+    trackText(finalsText+' '+t);                     // 邊聽邊亮字
+  };
+  r.recognized=(s,e)=>{
+    if(recognizer!==r||Date.now()<muteUntil) return;
     if(e.result.reason!==SpeechSDK.ResultReason.RecognizedSpeech) return;
+    finalsText+=' '+(e.result.text||'');
+    trackText(finalsText);
     try{
       const j=JSON.parse(e.result.properties.getProperty(SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult));
       const nb=j.NBest&&j.NBest[0]; if(!nb) return;
       const p=nb.PronunciationAssessment;
       if(p&&typeof p.FluencyScore==='number'){fluencySum+=p.FluencyScore;fluencyN++;}
-      applyWords(nb.Words||[]);
+      applyScores(nb.Words||[]);
     }catch(err){console.error(err);}
   };
-  recognizer.canceled=(s,e)=>{
+  r.canceled=(s,e)=>{
+    if(recognizer!==r) return;
     if(e.reason===SpeechSDK.CancellationReason.Error){
       const d=(e.errorDetails||'');
       let msg='❌ Azure 錯誤：'+d.slice(0,80);
@@ -399,11 +435,12 @@ function startListening(){
       heard.textContent=msg; stopListening();
     }
   };
-  recognizer.startContinuousRecognitionAsync(()=>{},err=>{heard.textContent='❌ 無法啟動：'+err;stopListening();});
+  r.startContinuousRecognitionAsync(()=>{},err=>{heard.textContent='❌ 無法啟動：'+err;stopListening();});
 
   listening=true; passed=false; lastProgress=Date.now();
   mic.classList.add('on'); startBtn.textContent='⏹ 念完了'; startBtn.classList.add('listening');
-  heard.textContent='我在聽囉… Go!（每句稍停一下・不會的字點一下或滑過去）';
+  heard.textContent='我在聽囉… Go!（不會的字點一下或滑過去）';
+  muteUntil=Date.now()+900;                         // 不要把 "Ready? Go!" 當成學生念的
   speak('Ready? Go!');
   timer=setInterval(()=>{
     if(paused){lastProgress=Date.now();return;}
@@ -422,14 +459,14 @@ function stopListening(){
 function resetWords(){
   clearTimeout(finishTimer); finishTimer=null;
   words.forEach(w=>{w.score=null;w.el.className='w';});
-  fill.style.width='0'; cursor=0; fluencySum=0; fluencyN=0;
+  fill.style.width='0'; cursor=0; scoreCur=0; finalsText=''; muteUntil=0; fluencySum=0; fluencyN=0;
 }
 
 /* ===== 過關與評分 ===== */
 function finish(manual){
   if(passed) return; passed=true; stopListening();
   const read=words.filter(w=>w.score!==null&&w.score>=0);
-  const completeness=read.length/words.length;
+  const completeness=Math.max(cursor,read.length)/words.length;
   const accuracy=read.length?read.reduce((a,w)=>a+w.score,0)/read.length:0;
   const fluency=fluencyN?fluencySum/fluencyN:0;
   // 給小朋友看的分數：一律 90～100 分、五顆星（真實分數只用來判斷要不要多給鼓勵）
