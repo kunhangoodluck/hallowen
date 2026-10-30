@@ -284,7 +284,7 @@ function listen(){
 function advance(c){
   cursor=c; lastProgress=Date.now(); render();
   if(cursor>=N){ phase='done'; stopRec(); setHint('🎉 念完了！','listen'); setTimeout(()=>finish(true),900); return; }
-  if(mode==='follow' && segOf(cursor)!==listenSeg){ stopRec(); setTimeout(demoThenListen,500); }
+  if(mode==='follow' && segOf(cursor)!==listenSeg){ phase='speak'; setHint('👍 很好！','listen'); stopRec(); setTimeout(demoThenListen,500); }
 }
 
 /* ================= 示範念一句，再換他念 ================= */
